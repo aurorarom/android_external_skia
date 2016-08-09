@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2006 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -21,11 +26,6 @@
 #define SKIA_VERSION_MAJOR  1
 #define SKIA_VERSION_MINOR  0
 #define SKIA_VERSION_PATCH  0
-
-/**Brnach prediction hint to compiler
-*/
-#define SkLikely(x)   __builtin_expect ((x), 1)
-#define SkUnlikely(x) __builtin_expect ((x), 0)
 
 /*
     memory wrappers to be implemented by the porting layer (platform)
@@ -143,6 +143,10 @@ inline void operator delete(void* p) {
     #define SK_TO_STRING_VIRT() virtual void toString(SkString* str) const;
     #define SK_TO_STRING_PUREVIRT() virtual void toString(SkString* str) const = 0;
     #define SK_TO_STRING_OVERRIDE() virtual void toString(SkString* str) const SK_OVERRIDE;
+#endif
+
+#ifndef MtkDebug
+    void MtkSkDebugf(const char format[], ...);
 #endif
 
 template <bool>

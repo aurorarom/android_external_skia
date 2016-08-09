@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2006 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -74,9 +79,11 @@ static int calculateRowBytesFor8888(int w, int bitCount)
 
 SkImageDecoder::Result SkICOImageDecoder::onDecode(SkStream* stream, SkBitmap* bm, Mode mode)
 {
+    MtkSkDebugf("ico_decoder stream %p, bm %p, mode %d\n", stream, bm, mode);
     SkAutoMalloc autoMal;
     const size_t length = CopyStreamToStorage(&autoMal, stream);
     if (0 == length) {
+        SkDEBUGF("The length of stream was 0. return kFailure.");
         return kFailure;
     }
 
@@ -305,6 +312,7 @@ SkImageDecoder::Result SkICOImageDecoder::onDecode(SkStream* stream, SkBitmap* b
     //ensure we haven't read off the end?
     //of course this doesn't help us if the andOffset was a lie...
     //return andOffset + (andLineWidth >> 3) <= length;
+    MtkSkDebugf("ico_decoder finish successfully, L:%d!!!\n",__LINE__);
     return kSuccess;
 }   //onDecode
 
@@ -407,13 +415,19 @@ static bool is_ico(SkStreamRewindable* stream) {
     // FIXME: Is that required and sufficient?
     SkAutoMalloc autoMal(4);
     unsigned char* buf = (unsigned char*)autoMal.get();
-    stream->read((void*)buf, 4);
-    int reserved = read2Bytes(buf, 0);
-    int type = read2Bytes(buf, 2);
-    if (reserved != 0 || type != 1) {
-        // This stream does not represent an ICO image.
+    /// M: for buf had the same ico identifier when read 0 size from stream. 
+    if (stream->read((void*)buf, 4) == 4) {
+        int reserved = read2Bytes(buf, 0);
+        int type = read2Bytes(buf, 2);
+        if (reserved != 0 || type != 1) {
+            // This stream does not represent an ICO image.
+            return false;
+        }
+    } else {
+        SkDEBUGF("Read the error size from stream. Can't create the SkICOImageDecoder.");
         return false;
     }
+
     return true;
 }
 

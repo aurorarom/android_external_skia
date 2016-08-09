@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2006 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -14,6 +19,14 @@
 #include "SkRefCnt.h"
 #include "SkTRegistry.h"
 #include "SkTypes.h"
+
+#ifdef MTK_SKIA_IMAGE_LOW_MEMORY_SIZE
+  #define MTK_MAX_SRC_JPEG_PROG_PIXELS (5*1024*1024)
+#else
+  #define MTK_MAX_SRC_JPEG_PROG_PIXELS (4096*4096)
+#endif
+
+#define MTK_JPEG_ImageDecoder	// MTK Jpeg Code Relative
 
 class SkStream;
 class SkStreamRewindable;
@@ -217,6 +230,23 @@ public:
     int getSampleSize() const { return fSampleSize; }
     void setSampleSize(int size);
 
+#ifdef MTK_JPEG_ImageDecoder
+    // prefer size, if set to > 0, tells the decoder to returen a bitmap that
+    // max dimension fit this value
+    int getPreferSize() const { return fPreferSize; }
+    void setPreferSize(int size);
+
+    // post process flag, tell decoder to enhance color/sharpness.
+    int getPostProcFlag() const { return fPostProc; }
+    void setPostProcFlag(int flag);
+#endif      
+
+#ifdef MTK_IMAGE_DC_SUPPORT
+	//Dynamic Contrast histogram information.
+	void* getDynamicCon() const {return fdc;}
+	void setDynamicCon(void* pointer, int size);
+#endif
+
     /** Reset the sampleSize to its default of 1
      */
     void resetSampleSize() { this->setSampleSize(1); }
@@ -300,6 +330,9 @@ public:
      * Return true for success.
      * Return false if the index is never built or failing in decoding.
      */
+#ifdef MTK_SKIA_MULTI_THREAD_JPEG_REGION
+    bool decodeSubset(SkBitmap* bm, const SkIRect& subset, SkColorType pref, int sampleSize, void* fdc);
+#endif
     bool decodeSubset(SkBitmap* bm, const SkIRect& subset, SkColorType pref);
 
     /** Given a stream, this will try to find an appropriate decoder object.
@@ -400,6 +433,11 @@ protected:
 
     // If the decoder wants to support tiled based decoding,
     // this method must be overridden. This guy is called by decodeRegion(...)
+#ifdef MTK_SKIA_MULTI_THREAD_JPEG_REGION
+    virtual bool onDecodeSubset(SkBitmap* bitmap, const SkIRect& rect, int sampleSize, void* fdc) {
+        return false;
+    }
+#endif
     virtual bool onDecodeSubset(SkBitmap* bitmap, const SkIRect& rect) {
         return false;
     }
@@ -441,6 +479,25 @@ protected:
 public:
     bool shouldCancelDecode() const { return fShouldCancelDecode; }
 
+#if 1 //def MTK_SKIA_MULTI_THREAD_JPEG_REGION
+    bool isAllowMultiThreadRegionDecode() { return fIsAllowMultiThreadRegionDecode ;}
+    bool setIsAllowMultiThreadRegionDecode(bool enable) { fIsAllowMultiThreadRegionDecode = enable; return true ;}
+    void regionDecodeLock() { 
+      SkDebugf("SKIA_REGION: wait regionDecodeLock!!\n");
+      fRegionDecodeMutex.acquire(); 
+      SkDebugf("SKIA_REGION: get regionDecodeLock!!\n");
+      return;
+    }
+    void regionDecodeUnlock() {
+      SkDebugf("SKIA_REGION: release regionDecodeUnlock!!\n");
+      fRegionDecodeMutex.release(); 
+      //SkDebugf("SKIA_REGION: done    regionDecodeUnlock!!\n");
+      return;
+    } 
+    
+#endif
+
+
 protected:
     SkImageDecoder();
 
@@ -477,6 +534,11 @@ protected:
         srcDepth and hasAlpha, or kUnknown_SkColorType if there is no preference.
      */
     SkColorType getPrefColorType(SrcDepth, bool hasAlpha) const;
+#if 1 //def MTK_SKIA_MULTI_THREAD_JPEG_REGION
+	bool					fIsAllowMultiThreadRegionDecode ;
+	SkMutex 				fRegionDecodeMutex ;
+#endif
+
 
 private:
     Peeker*                 fPeeker;
@@ -485,6 +547,10 @@ private:
 #endif
     SkBitmap::Allocator*    fAllocator;
     int                     fSampleSize;
+    int                     fPreferSize;
+    int                     fPostProc;
+	void*                   fdc;            // use dynamic contrast
+	int                     fsize;          // use dynamic contrast
     SkColorType             fDefaultPref;   // use if fUsePrefTable is false
 #ifdef SK_SUPPORT_LEGACY_BITMAP_CONFIG
     PrefConfigTable         fPrefTable;     // use if fUsePrefTable is true
@@ -495,6 +561,7 @@ private:
     mutable bool            fShouldCancelDecode;
     bool                    fPreferQualityOverSpeed;
     bool                    fRequireUnpremultipliedColors;
+    SkMutex                 fMutex;
 };
 
 /** Calling newDecoder with a stream returns a new matching imagedecoder

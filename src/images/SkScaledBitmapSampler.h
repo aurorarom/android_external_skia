@@ -1,3 +1,8 @@
+/*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
 
 /*
  * Copyright 2011 Google Inc.
@@ -31,7 +36,8 @@ public:
         kRGB,   // 3 bytes per pixel
         kRGBX,  // 4 byes per pixel (ignore 4th)
         kRGBA,  // 4 bytes per pixel
-        kRGB_565 // 2 bytes per pixel
+        kRGB_565, // 2 bytes per pixel
+        kGrayA    // 2 bytes per pixel, gray alpha
     };
 
     struct Options {

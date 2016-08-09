@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2006 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -10,6 +15,7 @@
 #define SkShader_DEFINED
 
 #include "SkBitmap.h"
+#include "SkBlitRow.h"
 #include "SkFlattenable.h"
 #include "SkMask.h"
 #include "SkMatrix.h"
@@ -167,14 +173,6 @@ public:
          *  to the specified device coordinates.
          */
         virtual void shadeSpan(int x, int y, SkPMColor[], int count) = 0;
-        enum SkShaderIds {
-            kSkBitmapProcShader_Class = 0x1,
-            kSkShader_OtherClass      = 0x2,
-        };
-
-        virtual void beginRect(int x, int y, int width);
-        virtual void endRect();
-        virtual SkShaderIds getID() { return kSkShader_OtherClass; }
 
         typedef void (*ShadeProc)(void* ctx, int x, int y, SkPMColor[], int count);
         virtual ShadeProc asAShadeProc(void** ctx);
@@ -203,6 +201,11 @@ public:
         // Notification from blitter::blitMask in case we need to see the non-alpha channels
         virtual void set3DMask(const SkMask*) {}
 
+		virtual bool shadeSpanRect(int x, int y, SkPMColor dstC[], int rb, int count, int height);
+		
+		virtual bool shadeSpanRect_D565(int x, int y, uint16_t* dst, 
+											 int rb, int count, int height, SkBlitRow::Proc blit_proc) ;
+	
     protected:
         // Reference to shader, so we don't have to dupe information.
         const SkShader& fShader;

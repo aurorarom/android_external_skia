@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2010 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -55,6 +60,8 @@ public:
      *  (cpu or gpu), then the info's ColorType will be kUnknown_SkColorType.
      */
     virtual SkImageInfo imageInfo() const;
+
+	virtual void dumpBitmapWithPid(int preTag, int pid = 0);
 
     /**
      *  Return the bounds of the device in the coordinate space of the root

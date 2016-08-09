@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2010 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -276,10 +281,10 @@ static SkPDFArray* make_indexed_color_space(SkColorTable* table) {
     SkString index;
     for (int i = 0; i < table->count(); i++) {
         char buf[3];
-        SkColor color = SkUnPreMultiply::PMColorToColor((*table)[i]);
-        buf[0] = SkGetPackedR32(color);
-        buf[1] = SkGetPackedG32(color);
-        buf[2] = SkGetPackedB32(color);
+       // SkColor color = SkUnPreMultiply::PMColorToColor((*table)[i]);
+        buf[0] = SkGetPackedR32((*table)[i]);
+        buf[1] = SkGetPackedG32((*table)[i]);
+        buf[2] = SkGetPackedB32((*table)[i]);
         index.append(buf, 3);
     }
     result->append(new SkPDFString(index))->unref();

@@ -1,3 +1,8 @@
+/*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
 
 /*
  * Copyright 2011 Google Inc.
@@ -15,11 +20,6 @@
 #if SK_SUPPORT_GPU
 #include "effects/GrSimpleTextureEffect.h"
 #include "effects/GrBicubicEffect.h"
-#endif
-
-#include "SkBitmapProcState_utils.h"
-#if defined(__ARM_NEON__) && !defined(__LP64__)
-extern void  Clamp_S32_Opaque_D32_filter_DX_shaderproc_neon(const SkBitmapProcState&, int, int, uint32_t*, int);
 #endif
 
 bool SkBitmapProcShader::CanDo(const SkBitmap& bm, TileMode tx, TileMode ty) {
@@ -50,14 +50,6 @@ SkBitmapProcShader::SkBitmapProcShader(SkReadBuffer& buffer)
     fRawBitmap.setImmutable();
     fTileModeX = buffer.readUInt();
     fTileModeY = buffer.readUInt();
-}
-
-void SkBitmapProcShader::BitmapProcShaderContext::beginRect(int x, int y, int width) {
-    fState->beginRect(x, y, width);
-}
-
-void SkBitmapProcShader::BitmapProcShaderContext::endRect() {
-    fState->endRect();
 }
 
 SkShader::BitmapType SkBitmapProcShader::asABitmap(SkBitmap* texture,
@@ -207,45 +199,14 @@ SkBitmapProcShader::BitmapProcShaderContext::~BitmapProcShaderContext() {
     #define TEST_BUFFER_EXTRA   0
 #endif
 
-bool checkDecal(const SkBitmapProcState& s, int x, int y, int count) {
-    const unsigned maxX = s.fBitmap->width() - 1;
-    const SkFixed one = s.fFilterOneX;
-    const SkFractionalInt dx = s.fInvSxFractionalInt;
-    SkFractionalInt fx;
-
-    {
-        SkPoint pt;
-        s.fInvProc(s.fInvMatrix, SkIntToScalar(x) + SK_ScalarHalf,
-                                 SkIntToScalar(y) + SK_ScalarHalf, &pt);
-        // now initialize fx
-        fx = SkScalarToFractionalInt(pt.fX) - (SkFixedToFractionalInt(one) >> 1);
-    }
-
-    // test if we don't need to apply the tile proc
-    if (can_truncate_to_fixed_for_decal(fx, dx, count, maxX)) {
-        return true;
-    }
-    return false;
-}
-
 void SkBitmapProcShader::BitmapProcShaderContext::shadeSpan(int x, int y, SkPMColor dstC[],
                                                             int count) {
     const SkBitmapProcState& state = *fState;
     if (state.getShaderProc32()) {
-#if defined(__ARM_NEON__) && !defined(__LP64__)
-        if (state.getShaderProc32() == Clamp_S32_Opaque_D32_filter_DX_shaderproc_neon) {
-            if (checkDecal(state, x, y, count)) {
-                state.getShaderProc32()(state, x, y, dstC, count);
-                return;
-            }
-        } else
-#endif
-        {
-            state.getShaderProc32()(state, x, y, dstC, count);
-            return;
-        }
+        state.getShaderProc32()(state, x, y, dstC, count);
+        return;
     }
-
+	
     uint32_t buffer[BUF_MAX + TEST_BUFFER_EXTRA];
     SkBitmapProcState::MatrixProc   mproc = state.getMatrixProc();
     SkBitmapProcState::SampleProc32 sproc = state.getSampleProc32();

@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2013 Google Inc.
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -9,6 +14,7 @@
 #include "SkStream.h"
 #include "SkStreamHelpers.h"
 #include "SkTypes.h"
+#include "SkImageDecoder.h"
 
 size_t CopyStreamToStorage(SkAutoMalloc* storage, SkStream* stream) {
     SkASSERT(storage != NULL);

@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright 2007 The Android Open Source Project
  *
  * Use of this source code is governed by a BSD-style license that can be
@@ -11,6 +16,28 @@
 #include "SkColorPriv.h"
 #include "SkDither.h"
 #include "SkTypes.h"
+
+extern bool Sample_Gray_D8888_neon(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]); 
+extern bool Sample_RGBx_D8888_neon(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]);
+extern bool Sample_RGBA_D8888_neon(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]);
+extern bool Sample_Index_D8888_neon(void* SK_RESTRICT dstRow,
+                               const uint8_t* SK_RESTRICT src,
+                       int width, int deltaSrc, int, const SkPMColor ctable[]);
+extern bool Sample_GrayX_D8888_neon(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]);
+extern bool Sample_GrayAlpha_D8888_neon(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]);
+extern bool Sample_RGBA_D8888_Unpremul_neon(void* SK_RESTRICT dstRow,
+                                       const uint8_t* SK_RESTRICT src,
+                                       int width, int deltaSrc, int, const SkPMColor[]);
 
 // 8888
 
@@ -28,7 +55,47 @@ static bool Sample_Gray_D8888(void* SK_RESTRICT dstRow,
 static SkScaledBitmapSampler::RowProc
 get_gray_to_8888_proc(const SkScaledBitmapSampler::Options& opts) {
     // Dither, unpremul, and skipZeroes have no effect
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+    return Sample_Gray_D8888_neon;
+#else
     return Sample_Gray_D8888;
+#endif
+}
+
+
+static bool Sample_GrayAlpha_D8888(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]) {
+    SkPMColor* SK_RESTRICT dst = (SkPMColor*)dstRow;
+    unsigned alphaMask = 0xFF;
+    for (int x = 0; x < width; x++) {
+        unsigned alpha = src[1];
+        dst[x] = SkPreMultiplyARGB(alpha, src[0], src[0], src[0]);
+        src += deltaSrc;
+        alphaMask &= alpha;
+    }
+    return alphaMask != 0xFF;
+}
+
+static bool Sample_GrayX_D8888(void* SK_RESTRICT dstRow,
+                              const uint8_t* SK_RESTRICT src,
+                              int width, int deltaSrc, int, const SkPMColor[]) {
+    SkPMColor* SK_RESTRICT dst = (SkPMColor*)dstRow;
+
+    for (int x = 0; x < width; x++) {
+        dst[x] = SkPackARGB32(0xFF, src[0], src[0], src[0]);
+        src += deltaSrc;
+    }
+    return false;
+}
+
+static SkScaledBitmapSampler::RowProc get_grayA_to_8888_proc(const SkScaledBitmapSampler::Options& opts) {
+    // Dither, unpremul, and skipZeroes have no effect
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+    return Sample_GrayAlpha_D8888_neon;
+#else
+    return Sample_GrayAlpha_D8888;
+#endif
 }
 
 static bool Sample_RGBx_D8888(void* SK_RESTRICT dstRow,
@@ -45,7 +112,11 @@ static bool Sample_RGBx_D8888(void* SK_RESTRICT dstRow,
 static SkScaledBitmapSampler::RowProc
 get_RGBx_to_8888_proc(const SkScaledBitmapSampler::Options& opts) {
     // Dither, unpremul, and skipZeroes have no effect
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+    return Sample_RGBx_D8888_neon;
+#else
     return Sample_RGBx_D8888;
+#endif
 }
 
 static bool Sample_RGBA_D8888(void* SK_RESTRICT dstRow,
@@ -100,13 +171,27 @@ get_RGBA_to_8888_proc(const SkScaledBitmapSampler::Options& opts) {
     if (!opts.fPremultiplyAlpha) {
         // We could check each component for a zero, at the expense of extra checks.
         // For now, just return unpremul.
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+        return Sample_RGBA_D8888_Unpremul_neon;
+#else
         return Sample_RGBA_D8888_Unpremul;
+#endif
     }
     // Supply the versions that premultiply the colors
     if (opts.fSkipZeros) {
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+        //Note, it's not exactly equal, only a faster version
+        //return Sample_RGBA_D8888_SkipZ;
+        return Sample_RGBA_D8888_neon;
+#else
         return Sample_RGBA_D8888_SkipZ;
+#endif
     }
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+    return Sample_RGBA_D8888_neon;
+#else
     return Sample_RGBA_D8888;
+#endif
 }
 
 // 565
@@ -357,6 +442,25 @@ get_RGBA_to_4444_proc(const SkScaledBitmapSampler::Options& opts) {
     return Sample_RGBA_D4444;
 }
 
+static bool Sample_GrayAlpha_D4444(void* SK_RESTRICT dstRow,
+		const uint8_t* SK_RESTRICT src, int width, int deltaSrc, int,
+		const SkPMColor[]) {
+	SkPMColor16* SK_RESTRICT dst = (SkPMColor16*) dstRow; //16bits
+	unsigned alphaMask = 0xFF;
+	for (int x = 0; x < width; x++) {
+		SkPMColor c = SkPreMultiplyARGB(src[1], src[0], src[0], src[0]); //32bits
+		dst[x] = SkPixel32ToPixel4444(c);//16bits
+		src += deltaSrc;
+		alphaMask &= src[1];
+	}
+	return alphaMask != 0xFF;
+}
+
+static SkScaledBitmapSampler::RowProc get_grayA_to_4444_proc(const SkScaledBitmapSampler::Options& opts) {
+	//no consider dither.
+	return Sample_GrayAlpha_D4444;
+}
+
 // Index
 
 #define A32_MASK_IN_PLACE   (SkPMColor)(SK_A32_MASK << SK_A32_SHIFT)
@@ -402,9 +506,19 @@ get_index_to_8888_proc(const SkScaledBitmapSampler::Options& opts) {
     }
     // Dither makes no difference
     if (opts.fSkipZeros) {
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+        //Note, it's not exactly equal, choose a faster version
+        //return Sample_Index_D8888_SkipZ;
+        return Sample_Index_D8888_neon;
+#else
         return Sample_Index_D8888_SkipZ;
+#endif
     }
+#if defined(__ARM_HAVE_NEON_COMMON) && defined(SK_CPU_LENDIAN)
+    return Sample_Index_D8888_neon;
+#else
     return Sample_Index_D8888;
+#endif
 }
 
 static bool Sample_Index_D565(void* SK_RESTRICT dstRow,
@@ -633,34 +747,39 @@ bool SkScaledBitmapSampler::begin(SkBitmap* dst, SrcConfig sc,
         get_RGBA_to_8888_proc,
         get_index_to_8888_proc,
         NULL, // 565 to 8888
+        get_grayA_to_8888_proc, //gray alpha to 8888
 
         get_gray_to_565_proc,
         get_RGBx_to_565_proc,
         get_RGBx_to_565_proc, // The source alpha will be ignored.
         get_index_to_565_proc,
         get_565_to_565_proc,
+        get_gray_to_565_proc, //gray alpha to 565,the source alpha will be ignored
 
         get_gray_to_4444_proc,
         get_RGBx_to_4444_proc,
         get_RGBA_to_4444_proc,
         get_index_to_4444_proc,
         NULL, // 565 to 4444
+        get_grayA_to_4444_proc, //gray alpha to 4444
 
         NULL, // gray to index
         NULL, // rgbx to index
         NULL, // rgba to index
         get_index_to_index_proc,
         NULL, // 565 to index
+        NULL, //gray alpha to index
 
         get_gray_to_A8_proc,
         NULL, // rgbx to a8
         NULL, // rgba to a8
         NULL, // index to a8
         NULL, // 565 to a8
+        NULL, //gray alpha to a8
     };
 
     // The jump between dst configs in the table
-    static const int gProcDstConfigSpan = 5;
+    static const int gProcDstConfigSpan = 6;
     SK_COMPILE_ASSERT(SK_ARRAY_COUNT(gProcChoosers) == 5 * gProcDstConfigSpan,
                       gProcs_has_the_wrong_number_of_entries);
 
@@ -691,6 +810,10 @@ bool SkScaledBitmapSampler::begin(SkBitmap* dst, SrcConfig sc,
         case SkScaledBitmapSampler::kRGB_565:
             fSrcPixelSize = 2;
             index += 4;
+            break;
+        case SkScaledBitmapSampler::kGrayA:
+            fSrcPixelSize = 2;
+            index += 5;
             break;
         default:
             return false;
@@ -763,9 +886,7 @@ bool SkScaledBitmapSampler::sampleInterlaced(const uint8_t* SK_RESTRICT src, int
     // of the destination bitmap's pixels, which is used to calculate the destination row
     // each time this function is called.
     const int dstY = srcYMinusY0 / fDY;
-    if (dstY >= fScaledHeight) {
-        return false;
-    }
+    SkASSERT(dstY < fScaledHeight);
     char* dstRow = fDstRow + dstY * fDstRowBytes;
     return fRowProc(dstRow, src + fX0 * fSrcPixelSize, fScaledWidth,
                     fDX * fSrcPixelSize, dstY, fCTable);

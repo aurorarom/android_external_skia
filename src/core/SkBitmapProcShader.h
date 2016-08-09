@@ -1,3 +1,8 @@
+/*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
 
 /*
  * Copyright 2006 The Android Open Source Project
@@ -13,13 +18,6 @@
 #include "SkShader.h"
 #include "SkBitmapProcState.h"
 #include "SkSmallAllocator.h"
-
-#ifdef QC_STRONG
-#define QC_WEAK
-#else
-#define QC_WEAK __attribute__((weak))
-#endif
-
 
 class SkBitmapProcShader : public SkShader {
 public:
@@ -48,17 +46,14 @@ public:
         BitmapProcShaderContext(const SkBitmapProcShader&, const ContextRec&, SkBitmapProcState*);
         virtual ~BitmapProcShaderContext();
 
-        virtual void shadeSpan(int x, int y, SkPMColor dstC[], int count) SK_OVERRIDE QC_WEAK;
-        // override beginRect and endRect
-        virtual void beginRect(int x, int y, int width);
-        virtual void endRect();
-
-        virtual SkShaderIds getID() { return kSkBitmapProcShader_Class; }
+        virtual void shadeSpan(int x, int y, SkPMColor dstC[], int count) SK_OVERRIDE;
         virtual ShadeProc asAShadeProc(void** ctx) SK_OVERRIDE;
         virtual void shadeSpan16(int x, int y, uint16_t dstC[], int count) SK_OVERRIDE;
 
         virtual uint32_t getFlags() const SK_OVERRIDE { return fFlags; }
-
+        virtual bool shadeSpanRect(int x, int y, SkPMColor dstC[], int rb, int count, int height);
+        virtual bool shadeSpanRect_D565(int x, int y, uint16_t* dst, 
+												 int rb, int count, int height, SkBlitRow::Proc blit_proc);
     private:
         SkBitmapProcState*  fState;
         uint32_t            fFlags;

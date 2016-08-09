@@ -1,3 +1,8 @@
+/*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
 
 /*
  * Copyright 2006 The Android Open Source Project
@@ -14,7 +19,13 @@
 #include "SkTemplates.h"
 #include "SkUtils.h"
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include "gif_lib.h"
+
+//#include "utils/Log.h"
+#define LOGE SkDebugf 
 
 class SkGIFMovie : public SkMovie {
 public:
@@ -26,11 +37,31 @@ protected:
     virtual bool onSetTime(SkMSec);
     virtual bool onGetBitmap(SkBitmap*);
 
+//for add gif begin
+//the following methods are intented for no one but Movie to use.
+//please see Movie.cpp for information
+    virtual int getGifFrameDuration(int frameIndex);
+    virtual int getGifTotalFrameCount();
+    virtual bool setCurrFrame(int frameIndex);
+private:
+    bool checkGifStream(SkStream* stream);
+    bool getWordFromStream(SkStream* stream,int* word);
+    bool getRecordType(SkStream* stream,GifRecordType* Type);
+    bool checkImageDesc(SkStream* stream,char* buf);
+    bool skipExtension(SkStream* stream,char* buf);
+    bool skipComment(SkStream* stream,char* buf);
+    bool skipGraphics(SkStream* stream,char* buf);
+    bool skipPlaintext(SkStream* stream,char* buf);
+    bool skipApplication(SkStream* stream,char* buf);
+    bool skipSubblocksWithTerminator(SkStream* stream,char* buf);
+//for add gif end
+    
 private:
     GifFileType* fGIF;
     int fCurrIndex;
     int fLastDrawIndex;
     SkBitmap fBackup;
+    SkColor paintingColor;
 };
 
 static int Decode(GifFileType* fileType, GifByteType* out, int size) {
@@ -45,8 +76,10 @@ SkGIFMovie::SkGIFMovie(SkStream* stream)
 #else
     fGIF = DGifOpen( stream, Decode, NULL );
 #endif
-    if (NULL == fGIF)
+
+    if (NULL == fGIF) {
         return;
+    }
 
     if (DGifSlurp(fGIF) != GIF_OK)
     {
@@ -55,6 +88,7 @@ SkGIFMovie::SkGIFMovie(SkStream* stream)
     }
     fCurrIndex = -1;
     fLastDrawIndex = -1;
+
 }
 
 SkGIFMovie::~SkGIFMovie()
@@ -76,6 +110,276 @@ static SkMSec savedimage_duration(const SavedImage* image)
     }
     return 0;
 }
+
+//for add gif begin
+int SkGIFMovie::getGifFrameDuration(int frameIndex)
+{
+    //for wrong frame index, return 0
+    if (frameIndex < 0 || NULL == fGIF || frameIndex >= fGIF->ImageCount)
+        return 0;
+    return savedimage_duration(&fGIF->SavedImages[frameIndex]);
+}
+
+int SkGIFMovie::getGifTotalFrameCount()
+{
+    //if fGIF is not valid, return 0
+    if (NULL == fGIF)
+        return 0;
+    return fGIF->ImageCount < 0 ? 0 : fGIF->ImageCount;
+}
+
+bool SkGIFMovie::setCurrFrame(int frameIndex)
+{
+    if (NULL == fGIF)
+        return false;
+
+    if (frameIndex >= 0 && frameIndex < fGIF->ImageCount)
+        fCurrIndex = frameIndex;
+    else
+        fCurrIndex = 0;
+    return true;
+}
+
+bool SkGIFMovie::getWordFromStream(SkStream* stream,int* word)
+{
+    unsigned char buf[2];
+
+    if (stream->read(buf, 2) != 2) {
+        LOGE("SkGIFMovie:getWordFromStream: read from stream failed");
+        return false;
+    }
+
+    *word = (((unsigned int)buf[1]) << 8) + buf[0];
+    return true;
+}
+
+bool SkGIFMovie::getRecordType(SkStream* stream,GifRecordType* Type)
+{
+    unsigned char buf;
+    //read a record type to buffer
+    if (stream->read(&buf, 1) != 1) {
+        LOGE("SkGIFMovie:getRecordType: read from stream failed");
+        return false;
+    }
+    //identify record type
+    switch (buf) {
+      case ',':
+          *Type = IMAGE_DESC_RECORD_TYPE;
+          break;
+      case '!':
+          *Type = EXTENSION_RECORD_TYPE;
+          break;
+      case ';':
+          *Type = TERMINATE_RECORD_TYPE;
+          break;
+      default:
+          *Type = UNDEFINED_RECORD_TYPE;
+          LOGE("SkGIFMovie:getRecordType: wrong gif record type");
+          return false;
+    }
+    return true;
+}
+
+/******************************************************************************
+ * calculate all image frame count without decode image frame.
+ * SkStream associated with GifFile and GifFile state is not
+ * affected
+ *****************************************************************************/
+bool SkGIFMovie::checkGifStream(SkStream* stream)
+{
+    char buf[16];
+    int screenWidth, screenHeight;
+    int BitsPerPixel = 0;
+    int frameCount = 0;
+    GifRecordType RecordType;
+
+    if (GIF_STAMP_LEN != stream->read(buf, GIF_STAMP_LEN)) {
+        LOGE("SkGIFMovie:checkGifStream: read GIF STAMP failed");
+        return false;
+    }
+
+    //Check whether the first three charactar is "GIF", version 
+    // number is ignored.
+    buf[GIF_STAMP_LEN] = 0;
+    if (strncmp(GIF_STAMP, buf, GIF_VERSION_POS) != 0) {
+        LOGE("SkGIFMovie:checkGifStream: check GIF stamp failed");
+        return false;
+    }
+
+    //read screen width and height from stream
+    screenWidth = 0;
+    screenHeight = 0;
+    if (! getWordFromStream(stream,&screenWidth) ||
+        ! getWordFromStream(stream,&screenHeight)) {
+        LOGE("SkGIFMovie:checkGifStream: get screen dimension failed");
+        return false;
+    }
+
+    //read screen color resolution and color map information
+    if (3 != stream->read(buf, 3)) {
+        LOGE("SkGIFMovie:checkGifStream: read color info failed");
+        return false;
+    }
+    BitsPerPixel = (buf[0] & 0x07) + 1;
+    if (buf[0] & 0x80) {    
+        //If we have global color table, skip it
+        unsigned int colorTableBytes = (unsigned)(1 << BitsPerPixel) * 3;
+        if (colorTableBytes != stream->skip(colorTableBytes)) {
+            LOGE("SkGIFMovie:checkGifStream: skip global color table failed");
+            return false;
+        }
+    } else {
+    }
+//DGifOpen is over, now for DGifSlurp
+    do {
+        if (getRecordType(stream, &RecordType) == false)
+            return false;
+
+        switch (RecordType) {
+          case IMAGE_DESC_RECORD_TYPE:
+              if (checkImageDesc(stream,buf) == false)
+                  return false;
+              frameCount ++;
+              //skip code size for LZW
+              if (1 != stream->skip(1)) {
+                  LOGE("SkGIFMovie:checkGifStream: skip code size failed");
+                  return false;
+              }
+              if (skipSubblocksWithTerminator(stream,buf) == false) {
+                  LOGE("SkGIFMovie:checkGifStream: skip compressed image data failed");
+                  return false;
+              }
+              break;
+
+          case EXTENSION_RECORD_TYPE:
+              if (skipExtension(stream,buf) == false) {
+                  LOGE("SkGIFMovie:checkGifStream: skip extensions failed");
+                  return false;
+              }
+              break;
+
+          case TERMINATE_RECORD_TYPE:
+              break;
+
+          default:    /* Should be trapped by DGifGetRecordType */
+              break;
+        }
+    } while (RecordType != TERMINATE_RECORD_TYPE);
+
+    return true;
+}
+
+bool SkGIFMovie::checkImageDesc(SkStream* stream,char* buf)
+{
+    int imageWidth,imageHeight;
+    int BitsPerPixel;
+    if (4 != stream->skip(4)) {
+        LOGE("SkGIFMovie:getImageDesc: skip image left-top position");
+        return false;
+    }
+    if (! getWordFromStream(stream,&imageWidth)||
+        ! getWordFromStream(stream,&imageHeight)) {
+        LOGE("SkGIFMovie:getImageDesc: read image width & height");
+        return false;
+    }
+    if (1 != stream->read(buf, 1)) {
+        LOGE("SkGIFMovie:getImageDesc: read image info failed");
+        return false;
+    }
+
+    BitsPerPixel = (buf[0] & 0x07) + 1;
+    if (buf[0] & 0x80) {    
+        //If this image have local color map, skip it
+        unsigned int colorTableBytes = (unsigned)(1 << BitsPerPixel) * 3;
+        if (colorTableBytes != stream->skip(colorTableBytes)) {
+            LOGE("SkGIFMovie:getImageDesc: skip global color table failed");
+            return false;
+        }
+    } else {
+    }
+    return true;
+}
+
+
+bool SkGIFMovie::skipExtension(SkStream* stream,char* buf)
+{
+    int imageWidth,imageHeight;
+    int BitsPerPixel;
+    if (1 != stream->read(buf, 1)) {
+        LOGE("SkGIFMovie:skipExtension: read extension type failed");
+        return false;
+    }
+    switch (buf[0]) {
+      case COMMENT_EXT_FUNC_CODE:
+          if (skipComment(stream,buf)==false) {
+              LOGE("SkGIFMovie:skipExtension: skip comment failed");
+              return false;
+          }
+          break;
+      case GRAPHICS_EXT_FUNC_CODE:
+          if (skipGraphics(stream,buf)==false) {
+              LOGE("SkGIFMovie:skipExtension: skip graphics failed");
+              return false;
+          }
+          break;
+      case PLAINTEXT_EXT_FUNC_CODE:
+          if (skipPlaintext(stream,buf)==false) {
+              LOGE("SkGIFMovie:skipExtension: skip plaintext failed");
+              return false;
+          }
+          break;
+      case APPLICATION_EXT_FUNC_CODE:
+          if (skipApplication(stream,buf)==false) {
+              LOGE("SkGIFMovie:skipExtension: skip application failed");
+              return false;
+          }
+          break;
+      default:
+          LOGE("SkGIFMovie:skipExtension: wrong gif extension type");
+          return false;
+    }
+    return true;
+}
+
+bool SkGIFMovie::skipComment(SkStream* stream,char* buf)
+{
+     return skipSubblocksWithTerminator(stream,buf);
+}
+
+bool SkGIFMovie::skipGraphics(SkStream* stream,char* buf)
+{
+     return skipSubblocksWithTerminator(stream,buf);
+}
+
+bool SkGIFMovie::skipPlaintext(SkStream* stream,char* buf)
+{
+     return skipSubblocksWithTerminator(stream,buf);
+}
+
+bool SkGIFMovie::skipApplication(SkStream* stream,char* buf)
+{
+     return skipSubblocksWithTerminator(stream,buf);
+}
+
+bool SkGIFMovie::skipSubblocksWithTerminator(SkStream* stream,char* buf)
+{
+    do {//skip the whole compressed image data.
+        //read sub-block size
+        if (1 != stream->read(buf,1)) {
+            LOGE("SkGIFMovie:skipSubblocksWithTerminator: read sub block size failed");
+            return false;
+        }
+        if (buf[0] > 0) {
+            if (buf[0] != stream->skip(buf[0])) {
+                LOGE("SkGIFMovie:skipSubblocksWithTerminator: skip sub block failed");
+                return false;
+            }
+        }
+    } while(buf[0]!=0);
+    return true;
+}
+
+//for add gif end
 
 bool SkGIFMovie::onGetInfo(Info* info)
 {
@@ -338,6 +642,9 @@ static void disposeFrameIfNeeded(SkBitmap* bm, const SavedImage* cur, const Save
 
 bool SkGIFMovie::onGetBitmap(SkBitmap* bm)
 {
+
+    MtkSkDebugf("gif_SkGifMovie_decoder onDecode, bm %p, fLastDrawIndex %d\n", bm, fLastDrawIndex);
+
     const GifFileType* gif = fGIF;
     if (NULL == gif)
         return false;
@@ -391,7 +698,8 @@ bool SkGIFMovie::onGetBitmap(SkBitmap* bm)
         bgColor = SkColorSetARGB(0xFF, col.Red, col.Green, col.Blue);
     }
 
-    static SkColor paintingColor = SkPackARGB32(0, 0, 0, 0);
+
+    paintingColor = SkPackARGB32(0, 0, 0, 0);
     // draw each frames - not intelligent way
     for (int i = startIndex; i <= lastIndex; i++) {
         const SavedImage* cur = &fGIF->SavedImages[i];
@@ -423,6 +731,7 @@ bool SkGIFMovie::onGetBitmap(SkBitmap* bm)
 
     // save index
     fLastDrawIndex = lastIndex;
+    MtkSkDebugf("gif_SkGifMovie_decoder onDecode finish successfully, fLastDrawIndex %d, L:%d!!!\n", fLastDrawIndex, __LINE__);
     return true;
 }
 

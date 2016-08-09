@@ -1,3 +1,8 @@
+/*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
 
 /*
  * Copyright 2013 Google Inc.
@@ -40,6 +45,7 @@ public:
      */
     virtual GrRenderTarget* accessRenderTarget() SK_OVERRIDE { return NULL; }
 
+	void dumpBitmapWithPid(int preTag, int pid = 0);
 protected:
     /**
      *  Device may filter the text flags for drawing text here. If it wants to

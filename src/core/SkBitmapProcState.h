@@ -16,12 +16,6 @@
 #include "SkPaint.h"
 #include "SkScaledImageCache.h"
 
-#ifdef QC_STRONG
-#define QC_WEAK
-#else
-#define QC_WEAK __attribute__((weak))
-#endif
-
 #define FractionalInt_IS_64BIT
 
 #ifdef FractionalInt_IS_64BIT
@@ -141,11 +135,6 @@ struct SkBitmapProcState {
 #endif
     SampleProc32 getSampleProc32() const { return fSampleProc32; }
     SampleProc16 getSampleProc16() const { return fSampleProc16; }
-
-    /* Perform rectaingle geometry specific setup/cleanup */
-    void beginRect(int x, int y, int width) QC_WEAK;
-    void endRect() QC_WEAK;
-    void *              fOptPtr;
 
 private:
     friend class SkBitmapProcShader;

@@ -36,7 +36,8 @@ include $(CLEAR_VARS)
 
 LOCAL_FDO_SUPPORT := true
 
-LOCAL_ARM_MODE := thumb
+LOCAL_ARM_MODE := arm
+
 ifeq ($(TARGET_ARCH),arm)
 	ifeq ($(ARCH_ARM_HAVE_VFP),true)
 		LOCAL_CFLAGS += -DANDROID_LARGE_MEMORY_DEVICE
@@ -78,10 +79,12 @@ LOCAL_SRC_FILES := \
 	src/core/SkBitmapFilter.cpp \
 	src/core/SkBitmapHeap.cpp \
 	src/core/SkBitmapProcShader.cpp \
+	src/core/SkBitmapProcShader_opt.cpp \
 	src/core/SkBitmapProcState.cpp \
 	src/core/SkBitmapProcState_matrixProcs.cpp \
 	src/core/SkBitmapScaler.cpp \
 	src/core/SkBitmap_scroll.cpp \
+	src/core/SkBitmap_debugger.cpp \
 	src/core/SkBlitMask_D32.cpp \
 	src/core/SkBlitRow_D16.cpp \
 	src/core/SkBlitRow_D32.cpp \
@@ -192,6 +195,7 @@ LOCAL_SRC_FILES := \
 	src/core/SkShader.cpp \
 	src/core/SkSpriteBlitter_ARGB32.cpp \
 	src/core/SkSpriteBlitter_RGB16.cpp \
+	src/core/SkSpriteBlitter_S16_D32.cpp \
 	src/core/SkStream.cpp \
 	src/core/SkString.cpp \
 	src/core/SkStringUtils.cpp \
@@ -515,16 +519,17 @@ LOCAL_SRC_FILES := \
 
 LOCAL_SHARED_LIBRARIES := \
 	liblog \
+	libcutils\
 	libGLESv2 \
 	libEGL \
 	libz \
 	libjpeg \
 	libpng \
+	libutils\
 	libicuuc \
 	libicui18n \
 	libexpat \
-	libft2 \
-	libcutils
+	libft2
 
 LOCAL_STATIC_LIBRARIES := \
 	libwebp-decode \
@@ -532,10 +537,11 @@ LOCAL_STATIC_LIBRARIES := \
 	libgif \
 	libsfntly
 
-ifeq ($(TARGET_HAVE_QC_PERF),true)
-	LOCAL_WHOLE_STATIC_LIBRARIES += libqc-skia
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+	LOCAL_STATIC_LIBRARIES += libskia_opt
 endif
 
+LOCAL_STATIC_LIBRARIES += libskia_graphics_opt
 
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/include/config \
@@ -585,6 +591,79 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(LOCAL_PATH)/include/utils \
 	$(LOCAL_PATH)/src/utils
 
+  LOCAL_CFLAGS += -DMTK_SKIA_MULTI_THREAD_JPEG_REGION
+#  LOCAL_CFLAGS += -DMTK_SKIA_DISABLE_MULTI_THREAD_JPEG_REGION
+#  LOCAL_CFLAGS += -DJPEG_DRAW_RECT
+
+ifeq ($(MTK_MIRAVISION_IMAGE_DC_SUPPORT),yes)
+  LOCAL_CFLAGS += -DMTK_IMAGE_DC_SUPPORT
+endif
+
+ifneq "$(strip $(MTK_EMULATOR_SUPPORT))" "yes"
+
+#ifeq ($(strip $(BOARD_USES_MTK_JPEG_HW_DECODER)),true)
+
+#MTK_PQ_SUPPORT=PQ_HW_VER_2
+ifeq ($(strip $(MTK_PQ_SUPPORT)),PQ_HW_VER_2)
+  LOCAL_C_INCLUDES += \
+  $(TOP)/$(MTK_PATH_SOURCE)/hardware/imagecodec/inc \
+  $(TOP)/$(MTK_PATH_SOURCE)/hardware/dpframework/inc \
+  $(TOP)/system/core/include/utils \
+#  $(TOP)/$(MTK_PATH_SOURCE)/external/mhal/inc \
+  
+  LOCAL_SHARED_LIBRARIES += libmhalImageCodec
+  LOCAL_SHARED_LIBRARIES += libdpframework
+#  LOCAL_SHARED_LIBRARIES += libalmkdrv 
+
+  LOCAL_CFLAGS += -DMTK_JPEG_HW_DECODER
+  LOCAL_CFLAGS += -DMTK_JPEG_HW_REGION_RESIZER
+  LOCAL_CFLAGS += -DMTK_6572DISPLAY_ENHANCEMENT_SUPPORT
+#  LOCAL_CFLAGS += -DNO_SKREGION_DECODE
+
+#  LOCAL_CFLAGS += -DMTK_JPEG_HW_DECODER_658X
+#  LOCAL_CFLAGS += -DMTK_WEBP_HW_DECODER
+#  LOCAL_CFLAGS += -DMTK_WEBP_HW_DECODER_ENABLE
+
+ifeq ($(strip $(MTK_GMO_RAM_OPTIMIZE)),yes)
+  LOCAL_CFLAGS += -DMTK_SKIA_IMAGE_LOW_MEMORY_SIZE
+endif
+
+endif
+
+
+#MTK_PQ_SUPPORT=PQ_HW_VER_1
+ifeq ($(strip $(MTK_PQ_SUPPORT)),PQ_HW_VER_1)
+  LOCAL_C_INCLUDES += \
+  $(TOP)/$(MTK_PATH_SOURCE)/hardware/imagecodec/inc \
+  $(TOP)/$(MTK_PATH_SOURCE)/hardware/dpframework/inc \
+  $(TOP)/system/core/include/utils \
+#  $(TOP)/$(MTK_PATH_SOURCE)/external/mhal/inc \
+  
+  LOCAL_SHARED_LIBRARIES += libmhalImageCodec
+  LOCAL_SHARED_LIBRARIES += libdpframework
+#  LOCAL_SHARED_LIBRARIES += libalmkdrv 
+
+   LOCAL_CFLAGS += -DMTK_JPEG_HW_DECODER
+   LOCAL_CFLAGS += -DMTK_JPEG_HW_DECODER_658X
+   
+#  disable MTK_89DISPLAY_ENHANCEMENT_SUPPORT & MTK_JPEG_HW_REGION_RESIZER for MT8135
+   ifneq ($(MTK_PLATFORM), $(filter $(MTK_PLATFORM) ,MT8135))
+   		LOCAL_CFLAGS += -DMTK_89DISPLAY_ENHANCEMENT_SUPPORT
+		  LOCAL_CFLAGS += -DMTK_JPEG_HW_REGION_RESIZER
+		  LOCAL_CFLAGS += -DMTK_WEBP_HW_DECODER
+		  LOCAL_CFLAGS += -DMTK_WEBP_HW_DECODER_ENABLE
+   endif
+
+
+endif
+
+#endif
+endif
+
+ifeq ($(TARGET_BUILD_VARIANT),eng)
+    LOCAL_CFLAGS += -D__ENG_LOAD
+endif
+
 LOCAL_MODULE := \
 	libskia
 
@@ -599,7 +678,6 @@ LOCAL_SRC_FILES_arm += \
 	src/opts/SkUtils_opts_arm.cpp \
 	src/opts/SkXfermode_opts_arm.cpp
 
-
 ifeq ($(ARCH_ARM_HAVE_NEON), true)
 LOCAL_SRC_FILES_arm += \
 	src/opts/memset16_neon.S \
@@ -610,11 +688,13 @@ LOCAL_SRC_FILES_arm += \
 	src/opts/SkBlitRow_opts_arm_neon.cpp \
 	src/opts/SkBlurImage_opts_neon.cpp \
 	src/opts/SkMorphology_opts_neon.cpp \
-	src/opts/SkXfermode_opts_arm_neon.cpp \
-	src/opts/ext/S32_Opaque_D32_filter_DX_shaderproc_neon.cpp
+	src/opts/SkXfermode_opts_arm_neon.cpp
 
 LOCAL_CFLAGS_arm += \
 	-D__ARM_HAVE_NEON
+
+LOCAL_CFLAGS += \
+	-D__ARM_HAVE_NEON_COMMON
 
 endif
 
@@ -695,14 +775,14 @@ include $(BUILD_SHARED_LIBRARY)
 #
 
 # benchmark (timings)
-include $(BASE_PATH)/bench/Android.mk
-include $(BASE_PATH)/tools/Android.mk
+#include $(BASE_PATH)/bench/Android.mk
+#include $(BASE_PATH)/tools/Android.mk
 
 # golden-master (fidelity / regression test)
-include $(BASE_PATH)/gm/Android.mk
+#include $(BASE_PATH)/gm/Android.mk
 
 # unit-tests
-include $(BASE_PATH)/tests/Android.mk
+#include $(BASE_PATH)/tests/Android.mk
 
 # diamond-master (one test to rule them all)
-include $(BASE_PATH)/dm/Android.mk
+#include $(BASE_PATH)/dm/Android.mk
